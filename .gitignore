@@ -1,0 +1,16 @@
+.DS_Store
+
+# Python caches / virtualenvs
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node artifacts
+node_modules/
+npm-debug.log*
+
+# Local plugin scratch artifacts
+openclaw-senses-plugin/.tmp-test/

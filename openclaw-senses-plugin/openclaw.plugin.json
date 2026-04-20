@@ -1,0 +1,18 @@
+{
+  "id": "@local/openclaw-senses",
+  "name": "@local/openclaw-senses",
+  "version": "0.1.0",
+  "type": "module",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  },
+  "openclaw": {
+    "extensions": ["./index.ts"],
+    "compat": {
+      "pluginApi": ">=2026.3.24-beta.2",
+      "minGatewayVersion": "2026.3.24-beta.2"
+    }
+  }
+}

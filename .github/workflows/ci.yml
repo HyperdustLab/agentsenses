@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  senses-ref:
+    name: senses-ref checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: senses-ref
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --group dev
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Validate example sense packages
+        run: uv run senses-ref validate-tree ../examples/senses
+
+  openclaw-plugin:
+    name: openclaw plugin checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: openclaw-senses-plugin
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: openclaw-senses-plugin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck plugin
+        run: npx tsc --noEmit
