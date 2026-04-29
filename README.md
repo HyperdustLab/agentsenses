@@ -11,7 +11,7 @@ This repo ships an **OpenClaw** **Senses** plugin and examples: **weave declarat
 A **Sense** is one **crosscutting concern** (security, citation style, web-use posture, compliance hints, and so on). Each sense is a small **model-facing policy spec**; stacking several senses forms the **self-reflective layer** above.
 
 - **Pointcut**: under which **logical join point**, **task/skill**, or **natural-language condition** it applies.
-- **Advice**: the **Markdown body** merged into the prompt when it fires, meant for the **LLM** to follow — not for the Sense Client to execute with TypeScript `if/else`.
+- **Advice**: the **Markdown body + optional executable handlers in `scripts/`** that fire when pointcuts match (AOP-style executable advice).
 
 The design borrows **AspectJ** *join point / pointcut / advice* vocabulary, but the runtime is **LLM + OpenClaw hooks**, not JVM bytecode.
 
@@ -38,7 +38,7 @@ Agent Senses **reuse** AspectJ terms (join point, pointcut, advice, `execution` 
 | **Join point**                      | Fine-grained, typed (e.g. method execution/call, field get/set)        | **A small set of logical kinds** (`execution`, `call`, `get`, `set`, `initialization`, …) mapped to hooks by the plugin; authors use **logical names**, not usually raw hook names exposed by the Sense Client                        |
 | **Pointcut language**               | `execution(..)`, `within(..)`, `call(..)` tied to **signatures/types** | Same **designator names** and `jointpoint == "…"`; plus **natural-language substrings**, `/regex/flags`, and `task.requires_web`, `skill == "…"`, …                                                                                   |
 | **“Execute / call / read” analogy** | Real execute / call / get in bytecode                                  | **Semantic analogy**: e.g. main model step ≈ execution, before tool call ≈ call, final payload to the provider ≈ get; user phrases like “run / call / check balance” can still match via **NL pointcuts** on the **same prompt edge** |
-| **Advice shape**                    | Arbitrary Java (@Before / @After / @Around)                            | **Markdown policy**; the **LLM** carries out its “meaning” in context, not the Sense Client’s imperative interpreter                                                                                                                  |
+| **Advice shape**                    | Arbitrary Java (@Before / @After / @Around)                            | **Markdown + executable handlers** in sense package `scripts/`; LLM-facing narrative and runtime hook logic work together                                                                                                             |
 | **Weaving implementation**          | Compile-time or load-time bytecode transform                           | **Runtime** string prepend / `llm_input` rewrite / outbound `message_sending`, … (see the plugin)                                                                                                                                     |
 | **Observability**                   | Debugger, aspect stack                                                 | **NOTICE**, logs with `weave @<jointpoint>`, and changed model behavior                                                                                                                                                               |
 
@@ -75,6 +75,30 @@ Full field tables, pointcut grammar, and hook mapping: `specification/SENSE_FORM
 - `examples/senses/example_*`: examples by jointpoint (includes placeholder senses).
 - `examples/senses/safety_sense`, `citation_sense`, `web-answer`: more product-shaped examples.
 - `skills/sense-test-full-playbook`: a coach skill that walks a human through **staged** crosscutting checks.
+
+## Explicit router layer (script/hook/service)
+
+For automatic local-vs-hosted dispatch, use the explicit router layer:
+
+- script: `tools/auto-route.sh`
+- guide: `tools/README.md`
+- companion skill: `skills/local_retrospective_router/SKILL.md`
+
+This router inspects the task text, chooses `main` (local) or `advanced` (hosted), prints the decision, and dispatches the task automatically.
+
+## Chat-developed agent (self grown from chat)
+
+Grow a layered "Me" on top of a stable "I" through conversation. Each rule-shaped statement can become a sense; repetition reinforces it via a Bayesian `for_me_score`; only the user can promote, edit, or archive.
+
+- Design: **[`specification/CHAT_DEVELOPED_AGENT.md`](specification/CHAT_DEVELOPED_AGENT.md)**
+- MVP example pack: **[`examples/chat-developed-agent/`](examples/chat-developed-agent/)**
+- Pipeline skills:
+  - `skills/chat-self-observer/` — detect candidate senses from chat
+  - `skills/chat-self-curator/` — normalize, render, update `for_me_score`
+  - `skills/chat-self-confirmer/` — human-in-the-loop card + slash commands
+  - `skills/chat-self-persister/` — write to `senses/<tier>/<name>/`, audit log, IEM guard
+
+Borrows the "I"/"Me" architecture of self from [Woźniak (2018)](https://www.frontiersin.org/journals/psychology/articles/10.3389/fpsyg.2018.01656/full). No plugin changes required for the MVP.
 
 ## Plugin and development
 

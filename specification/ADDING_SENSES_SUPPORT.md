@@ -6,26 +6,28 @@ This guide is for **Sense Client** implementors—any agent runtime, gateway, or
 
 ## Core principle: weave at edges, not in business logic
 
-A **Sense** is model-facing Markdown policy selected by **pointcuts** (joinpoint, task/skill flags, natural-language matches on a **verb haystack**). The **Sense Client** should:
+A **Sense** is model-facing advice selected by **pointcuts** (joinpoint, task/skill flags, natural-language matches on a **verb haystack**). Advice may include executable handlers under `scripts/` (AOP-style default). The **Sense Client** should:
 
 1. **Discover** sense packages (directories with `SENSE.md` or `sense.yaml` + `prompt.md`).
 2. On each relevant **lifecycle hook**, build **context** (jointpoint id, haystack text, skill id, task flags, …).
 3. **Evaluate** pointcuts and merge matched advice into the prompt or outbound channel according to `priority` and `advice.kind`.
 4. **Observe** which senses fired (logs, optional user-visible NOTICE).
+5. **Execute** matched advice handlers from package `scripts/` when present (default behavior), with optional frontmatter overrides.
 
-Avoid encoding the same rules in imperative `if/else` in Sense Client code; the format is meant to stay **declarative** and portable.
+Keep crosscutting concerns inside sense packages (pointcuts + advice + handlers) instead of scattering imperative `if/else` checks through unrelated business logic.
 
 ## Progressive disclosure (adapted from Agent Skills)
 
-Agent Skills use a three-tier **catalog → full SKILL.md → resources** model. Senses differ: advice is usually **short**, but many senses may exist. Recommended pattern:
+Agent Skills use a three-tier **catalog → full SKILL.md → resources** model. Senses should mirror that loading behavior. Recommended pattern:
 
 | Tier | Content | When | Cost |
 | ---- | ------- | ---- | ---- |
 | 1 | `name` + `description` (and optional operator catalog) | Deploy / admin UI | Minimal |
 | 2 | Full pointcut + advice body | When a sense **matches** a hook | Per match |
-| 3 | Linked assets (if you extend the format later) | Rare | Optional |
+| 3 | Package resources (`scripts/`, `references/`, `assets/`) | On demand when advice references them | Optional |
 
 Sense Clients are not required to inject Tier 1 into the model context; it is mainly for **humans and tooling** (`senses-ref read-properties`, dashboards).
+For Tier 3, follow Agent Skills style: expose resource names first, then load only the specific files requested by active advice.
 
 ## Discovery: where sense packages live
 

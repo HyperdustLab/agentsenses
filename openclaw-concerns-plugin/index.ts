@@ -15,7 +15,7 @@ import yaml from "yaml";
  * | `call` | method call | `before_tool_call` |
  * | `get` | field read (payload bound for model) | `llm_input` |
  * | `set` | field write (outgoing assistant text) | `message_sending` |
- * | `handler` | exception handler | `error` (if Sense Client exposes it) |
+ * | `handler` | exception handler | `error` (if Concern Client exposes it) |
  * | `adviceexecution` | advice execution | reserved (no hook yet) |
  * | `synchronization_lock` / `synchronization_unlock` | lock points | reserved (no hook yet) |
  *
@@ -117,8 +117,8 @@ function readFileSafe(filePath: string): string | null {
 }
 
 /**
- * Single-file sense format (like skills): YAML frontmatter + markdown body as prompt.
- * Prefer **`SENSE.md`**; `sense.md` is still read as a legacy fallback.
+ * Single-file concern format (like skills): YAML frontmatter + markdown body as prompt.
+ * Prefer **`CONCERN.md`**; `concern.md` is still read as a legacy fallback.
  */
 function parseSenseMd(raw: string, dir: string): SenseMeta | null {
   const text = raw.replace(/^\uFEFF/, "");
@@ -127,7 +127,7 @@ function parseSenseMd(raw: string, dir: string): SenseMeta | null {
   const afterOpen = text.slice(3).replace(/^\r?\n/, "");
   const closeIdx = afterOpen.search(/\r?\n---\r?\n/);
   if (closeIdx === -1) {
-    console.warn(`[openclaw-senses] SENSE.md missing closing --- at ${dir}`);
+    console.warn(`[openclaw-concerns] CONCERN.md missing closing --- at ${dir}`);
     return null;
   }
 
@@ -137,7 +137,7 @@ function parseSenseMd(raw: string, dir: string): SenseMeta | null {
   try {
     const meta = yaml.parse(yamlBlock) as SenseMeta;
     if (!meta?.name) {
-      console.warn(`[openclaw-senses] SENSE.md missing name at ${dir}`);
+      console.warn(`[openclaw-concerns] CONCERN.md missing name at ${dir}`);
       return null;
     }
     meta.prompt = body;
@@ -145,20 +145,20 @@ function parseSenseMd(raw: string, dir: string): SenseMeta | null {
     normalizeAspectMeta(meta);
     return meta;
   } catch (err) {
-    console.warn(`[openclaw-senses] Failed to parse SENSE.md YAML at ${dir}:`, err);
+    console.warn(`[openclaw-concerns] Failed to parse CONCERN.md YAML at ${dir}:`, err);
     return null;
   }
 }
 
 function loadSenseFromDir(dir: string): SenseMeta | null {
-  const senseMdPreferred = path.join(dir, "SENSE.md");
-  const senseMdLegacy = path.join(dir, "sense.md");
+  const senseMdPreferred = path.join(dir, "CONCERN.md");
+  const senseMdLegacy = path.join(dir, "concern.md");
   const senseMdRaw = readFileSafe(senseMdPreferred) ?? readFileSafe(senseMdLegacy);
   if (senseMdRaw) {
     return parseSenseMd(senseMdRaw, dir);
   }
 
-  const metaPath = path.join(dir, "sense.yaml");
+  const metaPath = path.join(dir, "concern.yaml");
   const promptPath = path.join(dir, "prompt.md");
   const metaRaw = readFileSafe(metaPath);
   const promptRaw = readFileSafe(promptPath);
@@ -171,32 +171,32 @@ function loadSenseFromDir(dir: string): SenseMeta | null {
     normalizeAspectMeta(meta);
     return meta;
   } catch (err) {
-    console.warn(`[openclaw-senses] Failed to parse legacy sense at ${dir}:`, err);
+    console.warn(`[openclaw-concerns] Failed to parse legacy concern at ${dir}:`, err);
     return null;
   }
 }
 
 function loadSenses(workspacePath: string): SenseMeta[] {
-  // api.resolvePath("senses") may already return ".../senses".
-  // Normalize both workspace-root and senses-dir inputs here.
+  // api.resolvePath("concerns") may already return ".../concerns".
+  // Normalize both workspace-root and concerns-dir inputs here.
   const sensesDir =
-    path.basename(workspacePath) === "senses"
+    path.basename(workspacePath) === "concerns"
       ? workspacePath
-      : path.join(workspacePath, "senses");
+      : path.join(workspacePath, "concerns");
   if (!fs.existsSync(sensesDir)) return [];
 
   const entries = fs.readdirSync(sensesDir, { withFileTypes: true });
-  const senses: SenseMeta[] = [];
+  const concerns: SenseMeta[] = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
 
     const dir = path.join(sensesDir, entry.name);
-    const sense = loadSenseFromDir(dir);
-    if (sense) senses.push(sense);
+    const concern = loadSenseFromDir(dir);
+    if (concern) concerns.push(concern);
   }
 
-  return senses;
+  return concerns;
 }
 
 const MAX_VERB_HAYSTACK_CHARS = 120_000;
@@ -277,24 +277,24 @@ function collectCandidateSenseDirs(basePaths: Array<string | undefined>): string
     if (!base || typeof base !== "string") continue;
     const trimmed = base.trim();
     if (!trimmed) continue;
-    if (path.basename(trimmed) === "senses") {
+    if (path.basename(trimmed) === "concerns") {
       dirs.add(trimmed);
     } else {
-      dirs.add(path.join(trimmed, "senses"));
+      dirs.add(path.join(trimmed, "concerns"));
     }
   }
 
-  // Heuristic fallback: scan one level under HOME for */senses.
+  // Heuristic fallback: scan one level under HOME for */concerns.
   const home = process.env.HOME;
   if (home && fs.existsSync(home)) {
     // OpenClaw default workspace path (hidden dir) should always be considered.
-    dirs.add(path.join(home, ".openclaw", "workspace", "senses"));
+    dirs.add(path.join(home, ".openclaw", "workspace", "concerns"));
     try {
       const entries = fs.readdirSync(home, { withFileTypes: true });
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         if (entry.name.startsWith(".")) continue;
-        dirs.add(path.join(home, entry.name, "senses"));
+        dirs.add(path.join(home, entry.name, "concerns"));
       }
     } catch {
       // ignore home scan errors
@@ -411,15 +411,15 @@ function matchVerbPattern(expr: string, haystack: string): boolean {
   return haystack.toLowerCase().includes(p.toLowerCase());
 }
 
-function adviceAppliesAtWeave(sense: SenseMeta): boolean {
-  const kind = effectiveAdviceKind(sense);
+function adviceAppliesAtWeave(concern: SenseMeta): boolean {
+  const kind = effectiveAdviceKind(concern);
   return kind === "before" || kind === "around";
 }
 
-function matchSensesForJointPoint(senses: SenseMeta[], ctx: any): SenseMeta[] {
-  const matched = senses.filter((sense) => {
-    if (!adviceAppliesAtWeave(sense)) return false;
-    return matchesPointcut(sense.pointcut, ctx);
+function matchSensesForJointPoint(concerns: SenseMeta[], ctx: any): SenseMeta[] {
+  const matched = concerns.filter((concern) => {
+    if (!adviceAppliesAtWeave(concern)) return false;
+    return matchesPointcut(concern.pointcut, ctx);
   });
 
   matched.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
@@ -456,15 +456,15 @@ async function runExecutableForMatchedSenses(
   jointpoint: string,
   event: any,
   pointcutCtx: any
-): Promise<Array<{ sense: SenseMeta; result: SenseExecutableResult }>> {
-  const out: Array<{ sense: SenseMeta; result: SenseExecutableResult }> = [];
-  for (const sense of matched) {
+): Promise<Array<{ concern: SenseMeta; result: SenseExecutableResult }>> {
+  const out: Array<{ concern: SenseMeta; result: SenseExecutableResult }> = [];
+  for (const concern of matched) {
     try {
-      const res = await runSenseExecutable(sense, hook, jointpoint, event, pointcutCtx);
-      if (res) out.push({ sense, result: res });
+      const res = await runSenseExecutable(concern, hook, jointpoint, event, pointcutCtx);
+      if (res) out.push({ concern, result: res });
     } catch (err) {
       api.logger?.warn?.(
-        `[openclaw-senses] executable @${hook} failed for ${sense.name}: ${
+        `[openclaw-concerns] executable @${hook} failed for ${concern.name}: ${
           err instanceof Error ? err.message : String(err)
         }`
       );
@@ -583,18 +583,18 @@ function matchesPointcut(pointcut: SenseMeta["pointcut"], ctx: any): boolean {
   return true;
 }
 
-function buildSenseBlock(senses: SenseMeta[]): string {
+function buildSenseBlock(concerns: SenseMeta[]): string {
   const parts: string[] = [];
 
-  parts.push("The following Senses are active for this run.");
+  parts.push("The following Concerns are active for this run.");
   parts.push("They are crosscutting modulation instructions and must be followed.");
 
-  for (const s of senses) {
+  for (const s of concerns) {
     const adv = effectiveAdviceKind(s);
     const advLabel = `@${adv.charAt(0).toUpperCase()}${adv.slice(1)}`;
     parts.push(
       [
-        `[Sense / Aspect: ${s.name}]`,
+        `[Concern / Aspect: ${s.name}]`,
         `[Advice: ${advLabel}]`,
         s.description ? `Description: ${s.description}` : "",
         s.modulation?.type ? `Modulation: ${s.modulation.type}` : "",
@@ -632,8 +632,8 @@ function walkFilesRecursive(baseDir: string, relDir: string, acc: string[], cap:
   }
 }
 
-function listSenseResources(sense: SenseMeta): string[] {
-  const base = sense.packageDir;
+function listSenseResources(concern: SenseMeta): string[] {
+  const base = concern.packageDir;
   if (!base) return [];
   const out: string[] = [];
   for (const d of SENSE_RESOURCE_DIRS) {
@@ -645,13 +645,13 @@ function listSenseResources(sense: SenseMeta): string[] {
   return out.sort();
 }
 
-function buildSenseResourceIndex(sense: SenseMeta): string {
-  const base = sense.packageDir;
+function buildSenseResourceIndex(concern: SenseMeta): string {
+  const base = concern.packageDir;
   if (!base) return "";
-  const resources = listSenseResources(sense);
-  if (!resources.length) return `Sense directory: ${base}`;
+  const resources = listSenseResources(concern);
+  if (!resources.length) return `Concern directory: ${base}`;
   return [
-    `Sense directory: ${base}`,
+    `Concern directory: ${base}`,
     "<sense_resources>",
     ...resources.map((p) => `- ${p}`),
     "</sense_resources>"
@@ -659,24 +659,24 @@ function buildSenseResourceIndex(sense: SenseMeta): string {
 }
 
 function buildUserVisibleNotice(_senses: SenseMeta[]): string {
-  // User requested: keep senses active but suppress verbose NOTICE blocks.
+  // User requested: keep concerns active but suppress verbose NOTICE blocks.
   return "";
 }
 
 function buildRenderedNotice(_senses: SenseMeta[]): string {
-  // User requested: keep senses active but suppress verbose NOTICE blocks.
+  // User requested: keep concerns active but suppress verbose NOTICE blocks.
   return "";
 }
 
-function _buildUserVisibleNoticeDisabledReference(senses: SenseMeta[]): string {
-  const names = senses.map((s) => s.name).join(", ");
-  const descriptions = senses
+function _buildUserVisibleNoticeDisabledReference(concerns: SenseMeta[]): string {
+  const names = concerns.map((s) => s.name).join(", ");
+  const descriptions = concerns
     .map((s) => `- ${s.name}: ${s.description ?? "(no description provided)"}`)
     .join("\n");
 
   return [
     "SYSTEM INSTRUCTION: The next assistant response MUST begin with the following notice exactly as written.",
-    `NOTICE: The following sense rules were triggered for this response: ${names}`,
+    `NOTICE: The following concern rules were triggered for this response: ${names}`,
     descriptions,
     "The assistant must not omit, shorten, or hide this notice.",
     "This notice should be the first visible text in the response."
@@ -684,14 +684,14 @@ function _buildUserVisibleNoticeDisabledReference(senses: SenseMeta[]): string {
     .filter(Boolean)
     .join("\n");
 }
-function _buildRenderedNoticeDisabledReference(senses: SenseMeta[]): string {
-  const names = senses.map((s) => s.name).join(", ");
-  const descriptions = senses
+function _buildRenderedNoticeDisabledReference(concerns: SenseMeta[]): string {
+  const names = concerns.map((s) => s.name).join(", ");
+  const descriptions = concerns
     .map((s) => `- ${s.name}: ${s.description ?? "(no description provided)"}`)
     .join("\n");
 
   return [
-    `NOTICE: The following sense rules were triggered for this response: ${names}`,
+    `NOTICE: The following concern rules were triggered for this response: ${names}`,
     descriptions
   ]
     .filter(Boolean)
@@ -703,7 +703,7 @@ type SenseExecutableInput = {
   jointpoint: string;
   event: any;
   pointcut: any;
-  sense: {
+  concern: {
     name: string;
     description?: string;
     packageDir?: string;
@@ -718,8 +718,8 @@ type SenseExecutableModule = {
   [key: string]: unknown;
 };
 
-function resolveSenseScriptPath(sense: SenseMeta, rel: string | undefined): string | null {
-  const base = sense.packageDir;
+function resolveSenseScriptPath(concern: SenseMeta, rel: string | undefined): string | null {
+  const base = concern.packageDir;
   if (!rel || !base) return null;
 
   const cleaned = rel.trim();
@@ -735,16 +735,16 @@ function resolveSenseScriptPath(sense: SenseMeta, rel: string | undefined): stri
 }
 
 function executableConfigForHook(
-  sense: SenseMeta,
+  concern: SenseMeta,
   hook: ExecutableHookName
 ): ExecutableHookConfig | undefined {
-  const cfg = sense.executable?.[hook];
+  const cfg = concern.executable?.[hook];
   if (cfg?.script) return cfg;
   // Executable-by-default convention: scripts/<hook>.js or scripts/<hook-kebab>.js.
-  if (sense.packageDir) {
+  if (concern.packageDir) {
     const candidates = [`scripts/${hook}.js`, `scripts/${hook.replaceAll("_", "-")}.js`];
     for (const rel of candidates) {
-      const absolute = path.join(sense.packageDir, rel);
+      const absolute = path.join(concern.packageDir, rel);
       if (fs.existsSync(absolute) && fs.statSync(absolute).isFile()) {
         return { script: rel };
       }
@@ -754,14 +754,14 @@ function executableConfigForHook(
 }
 
 async function runSenseExecutable(
-  sense: SenseMeta,
+  concern: SenseMeta,
   hook: ExecutableHookName,
   jointpoint: string,
   event: any,
   pointcutCtx: any
 ): Promise<SenseExecutableResult | null> {
-  const cfg = executableConfigForHook(sense, hook);
-  const scriptPath = resolveSenseScriptPath(sense, cfg?.script);
+  const cfg = executableConfigForHook(concern, hook);
+  const scriptPath = resolveSenseScriptPath(concern, cfg?.script);
   if (!scriptPath) return null;
 
   const fileUrl = pathToFileURL(scriptPath).href;
@@ -780,10 +780,10 @@ async function runSenseExecutable(
     jointpoint,
     event,
     pointcut: pointcutCtx,
-    sense: {
-      name: sense.name,
-      description: sense.description,
-      packageDir: sense.packageDir
+    concern: {
+      name: concern.name,
+      description: concern.description,
+      packageDir: concern.packageDir
     }
   };
   const result = await fn(input);
@@ -791,7 +791,7 @@ async function runSenseExecutable(
   return result;
 }
 
-/** Merged NOTICE for senses matched on model-bound join points. */
+/** Merged NOTICE for concerns matched on model-bound join points. */
 let pendingNoticePrefix = "";
 const pendingMatchedSensesForNotice: SenseMeta[] = [];
 
@@ -801,7 +801,7 @@ const NOTICE_MERGE_JOINTS = new Set<string>([
   JOINT_POINT.get
 ]);
 
-/** Dedupe woven blocks per (jointpoint, sense name). */
+/** Dedupe woven blocks per (jointpoint, concern name). */
 const wovenSenseKeys = new Set<string>();
 
 function weaveDedupeKey(jointpoint: string, senseName: string): string {
@@ -826,7 +826,7 @@ function clearPendingNoticeState() {
 }
 
 function loadAllSenses(api: any, event: any): SenseMeta[] {
-  const workspacePath = api.resolvePath("senses");
+  const workspacePath = api.resolvePath("concerns");
   if (!workspacePath) return [];
 
   const fallbackWorkspacePath =
@@ -849,22 +849,22 @@ function loadAllSenses(api: any, event: any): SenseMeta[] {
   }
 
   const uniq = new Map<string, SenseMeta>();
-  for (const sense of allLoaded) {
-    const key = `${sense.name}::${sense.prompt ?? ""}`;
-    if (!uniq.has(key)) uniq.set(key, sense);
+  for (const concern of allLoaded) {
+    const key = `${concern.name}::${concern.prompt ?? ""}`;
+    if (!uniq.has(key)) uniq.set(key, concern);
   }
   return Array.from(uniq.values());
 }
 
 function getMatchedSensesAtJointPoint(api: any, event: any, jointpoint: string): {
-  senses: SenseMeta[];
+  concerns: SenseMeta[];
   ctxObj: any;
   matched: SenseMeta[];
 } {
-  const senses = loadAllSenses(api, event);
+  const concerns = loadAllSenses(api, event);
   const ctxObj = buildPointcutContext(event, jointpoint);
-  const matched = matchSensesForJointPoint(senses, ctxObj);
-  return { senses, ctxObj, matched };
+  const matched = matchSensesForJointPoint(concerns, ctxObj);
+  return { concerns, ctxObj, matched };
 }
 
 function mergePrependReturns(parts: Array<Record<string, string>>): Record<string, string> {
@@ -877,10 +877,10 @@ function mergePrependReturns(parts: Array<Record<string, string>>): Record<strin
   return merged ? { prependSystemContext: merged, prependContext: merged } : {};
 }
 
-function buildSetSensePrefix(senses: SenseMeta[]): string {
-  if (!senses.length) return "";
-  const blocks = senses.map((s) =>
-    [`[Sense @set / field-write: ${s.name}]`, s.description ? `(${s.description})` : "", s.prompt ?? ""]
+function buildSetSensePrefix(concerns: SenseMeta[]): string {
+  if (!concerns.length) return "";
+  const blocks = concerns.map((s) =>
+    [`[Concern @set / field-write: ${s.name}]`, s.description ? `(${s.description})` : "", s.prompt ?? ""]
       .filter(Boolean)
       .join("\n")
   );
@@ -897,16 +897,16 @@ function weaveJointPoint(
   opts?: WeaveJointOptions
 ): Record<string, string> {
   try {
-    if (!api.resolvePath?.("senses")) {
-      api.logger?.warn?.("[openclaw-senses] No workspace path resolved.");
+    if (!api.resolvePath?.("concerns")) {
+      api.logger?.warn?.("[openclaw-concerns] No workspace path resolved.");
       return {};
     }
 
-    const senses = loadAllSenses(api, event);
-    if (!senses.length) return {};
+    const concerns = loadAllSenses(api, event);
+    if (!concerns.length) return {};
 
     const ctxObj = buildPointcutContext(event, jointpoint);
-    const matched = matchSensesForJointPoint(senses, ctxObj);
+    const matched = matchSensesForJointPoint(concerns, ctxObj);
     if (!matched.length) return {};
 
     mergePendingNoticeSenses(matched, jointpoint);
@@ -915,7 +915,7 @@ function weaveJointPoint(
     for (const s of toInject) wovenSenseKeys.add(weaveDedupeKey(jointpoint, s.name));
     if (!toInject.length) return {};
 
-    api.logger?.info?.(`[openclaw-senses] weave @${jointpoint}: ${matched.map((s) => s.name).join(", ")}`);
+    api.logger?.info?.(`[openclaw-concerns] weave @${jointpoint}: ${matched.map((s) => s.name).join(", ")}`);
 
     if (opts?.skipPrependReturn) {
       return {};
@@ -924,27 +924,27 @@ function weaveJointPoint(
     const senseBlock = buildSenseBlock(toInject);
     const notice = opts?.omitUserNotice ? "" : buildUserVisibleNotice(toInject);
     const responseText = notice
-      ? `\n\n<Senses join="${jointpoint}">\n${senseBlock}\n</Senses>\n\n${notice}`
-      : `\n\n<Senses join="${jointpoint}">\n${senseBlock}\n</Senses>\n`;
+      ? `\n\n<Concerns join="${jointpoint}">\n${senseBlock}\n</Concerns>\n\n${notice}`
+      : `\n\n<Concerns join="${jointpoint}">\n${senseBlock}\n</Concerns>\n`;
     return {
       prependSystemContext: responseText,
       prependContext: responseText
     };
   } catch (err) {
-    api.logger?.error?.(`[openclaw-senses] weave @${jointpoint} failed:`, err);
+    api.logger?.error?.(`[openclaw-concerns] weave @${jointpoint} failed:`, err);
     return {};
   }
 }
 
 function weaveLlmInputGet(api: any, event: any, ctx: any) {
   try {
-    if (!api.resolvePath?.("senses")) return;
+    if (!api.resolvePath?.("concerns")) return;
 
-    const senses = loadAllSenses(api, event);
-    if (!senses.length) return;
+    const concerns = loadAllSenses(api, event);
+    if (!concerns.length) return;
 
     const ctxObj = buildPointcutContext(event, JOINT_POINT.get);
-    const matched = matchSensesForJointPoint(senses, ctxObj);
+    const matched = matchSensesForJointPoint(concerns, ctxObj);
     if (!matched.length) return;
 
     mergePendingNoticeSenses(matched, JOINT_POINT.get);
@@ -955,7 +955,7 @@ function weaveLlmInputGet(api: any, event: any, ctx: any) {
 
     const senseBlock = buildSenseBlock(toInject);
     const notice = buildUserVisibleNotice(toInject);
-    const inject = `\n\n<Senses join="${JOINT_POINT.get}">\n${senseBlock}\n</Senses>\n\n${notice}`;
+    const inject = `\n\n<Concerns join="${JOINT_POINT.get}">\n${senseBlock}\n</Concerns>\n\n${notice}`;
 
     if (typeof event?.systemPrompt === "string") {
       event.systemPrompt = inject + event.systemPrompt;
@@ -963,9 +963,9 @@ function weaveLlmInputGet(api: any, event: any, ctx: any) {
       event.prompt = inject + event.prompt;
     }
 
-    api.logger?.info?.(`[openclaw-senses] weave @${JOINT_POINT.get} (llm_input): ${matched.map((s) => s.name).join(", ")}`);
+    api.logger?.info?.(`[openclaw-concerns] weave @${JOINT_POINT.get} (llm_input): ${matched.map((s) => s.name).join(", ")}`);
   } catch (err) {
-    api.logger?.error?.("[openclaw-senses] llm_input weave failed:", err);
+    api.logger?.error?.("[openclaw-concerns] llm_input weave failed:", err);
   }
 }
 
@@ -975,12 +975,12 @@ let firstBeforePromptBuild = true;
 export default function register(api: any) {
   api.on(HOOK_MODEL_RESOLVE, async (event: any, _ctx: any) => {
     try {
-      if (!api.resolvePath?.("senses")) return {};
-      const senses = loadAllSenses(api, event);
-      if (!senses.length) return {};
+      if (!api.resolvePath?.("concerns")) return {};
+      const concerns = loadAllSenses(api, event);
+      if (!concerns.length) return {};
 
       const ctxObj = buildPointcutContext({ prompt: event?.prompt ?? "" }, JOINT_POINT.execution);
-      const matched = matchSensesForJointPoint(senses, ctxObj);
+      const matched = matchSensesForJointPoint(concerns, ctxObj);
       if (!matched.length) return {};
 
       let providerOverride: string | undefined;
@@ -1004,7 +1004,7 @@ export default function register(api: any) {
 
       if (providerOverride || modelOverride) {
         api.logger?.info?.(
-          `[openclaw-senses] executable @${HOOK_MODEL_RESOLVE}: ` +
+          `[openclaw-concerns] executable @${HOOK_MODEL_RESOLVE}: ` +
             `provider=${providerOverride ?? "-"} model=${modelOverride ?? "-"}`
         );
         return {
@@ -1014,7 +1014,7 @@ export default function register(api: any) {
       }
       return {};
     } catch (err) {
-      api.logger?.error?.("[openclaw-senses] executable before_model_resolve failed:", err);
+      api.logger?.error?.("[openclaw-concerns] executable before_model_resolve failed:", err);
       return {};
     }
   });
@@ -1045,7 +1045,7 @@ export default function register(api: any) {
         }
       }
     } catch (err) {
-      api.logger?.warn?.("[openclaw-senses] executable @before_prompt_build failed:", err);
+      api.logger?.warn?.("[openclaw-concerns] executable @before_prompt_build failed:", err);
     }
     return merged;
   });
@@ -1068,7 +1068,7 @@ export default function register(api: any) {
         }
       }
     } catch (err) {
-      api.logger?.warn?.("[openclaw-senses] executable @before_agent_start failed:", err);
+      api.logger?.warn?.("[openclaw-concerns] executable @before_agent_start failed:", err);
     }
     return merged;
   });
@@ -1092,7 +1092,7 @@ export default function register(api: any) {
       }
       return out;
     } catch (err) {
-      api.logger?.warn?.("[openclaw-senses] executable @before_tool_call failed:", err);
+      api.logger?.warn?.("[openclaw-concerns] executable @before_tool_call failed:", err);
       return {};
     }
   });
@@ -1108,21 +1108,21 @@ export default function register(api: any) {
       weaveJointPoint(api, synthetic, ctx, JOINT_POINT.handler, { omitUserNotice: true, skipPrependReturn: true });
     });
   } catch {
-    /* Sense Client may not expose error hook */
+    /* Concern Client may not expose error hook */
   }
 
   api.on(HOOK_SET, async (event: any, _ctx: any) => {
     let content = outgoingTextFromEvent(event);
     if (!content) return {};
 
-    let senses: SenseMeta[] = [];
+    let concerns: SenseMeta[] = [];
     let ctxSet: any = null;
     let matchedSet: SenseMeta[] = [];
     let executablePrefix = "";
     try {
-      if (api.resolvePath("senses")) {
+      if (api.resolvePath("concerns")) {
         const matchedState = getMatchedSensesAtJointPoint(api, event, JOINT_POINT.set);
-        senses = matchedState.senses;
+        concerns = matchedState.concerns;
         ctxSet = matchedState.ctxObj;
         matchedSet = matchedState.matched;
 
@@ -1167,12 +1167,12 @@ export default function register(api: any) {
         }
       }
     } catch {
-      senses = [];
+      concerns = [];
     }
 
     if (!ctxSet) {
       ctxSet = buildPointcutContext(event, JOINT_POINT.set);
-      matchedSet = matchSensesForJointPoint(senses, ctxSet);
+      matchedSet = matchSensesForJointPoint(concerns, ctxSet);
     }
     const toInjectSet = matchedSet.filter((s) => !wovenSenseKeys.has(weaveDedupeKey(JOINT_POINT.set, s.name)));
     for (const s of toInjectSet) {
@@ -1180,12 +1180,12 @@ export default function register(api: any) {
     }
     const setPrefix = buildSetSensePrefix(toInjectSet);
 
-    const hasNotice = content.includes("NOTICE: The following sense rules were triggered");
+    const hasNotice = content.includes("NOTICE: The following concern rules were triggered");
     let noticePrefix = hasNotice ? "" : pendingNoticePrefix;
     if (!hasNotice && !noticePrefix) {
       // Fallback: if prompt-stage notice state was missed, reconstruct from execution matching.
       const ctxExec = buildPointcutContext(event, JOINT_POINT.execution);
-      const matchedExec = matchSensesForJointPoint(senses, ctxExec);
+      const matchedExec = matchSensesForJointPoint(concerns, ctxExec);
       if (matchedExec.length) {
         noticePrefix = buildRenderedNotice(matchedExec);
       }

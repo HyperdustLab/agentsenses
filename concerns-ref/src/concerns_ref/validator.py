@@ -1,4 +1,4 @@
-"""Validate sense packages against specification/SENSE_FORMAT.md rules."""
+"""Validate concern packages against specification/SENSE_FORMAT.md rules."""
 
 import unicodedata
 from pathlib import Path
@@ -10,7 +10,7 @@ from .parser import find_sense_md, parse_frontmatter, _load_legacy
 MAX_NAME_LENGTH = 64
 MAX_DESCRIPTION_LENGTH = 1024
 
-# Top-level keys allowed in SENSE.md / sense.yaml frontmatter (strict authoring surface)
+# Top-level keys allowed in CONCERN.md / concern.yaml frontmatter (strict authoring surface)
 ALLOWED_TOP_LEVEL = {
     "name",
     "description",
@@ -51,24 +51,24 @@ def _validate_name(name: str) -> list[str]:
 
     if len(name) > MAX_NAME_LENGTH:
         errors.append(
-            f"Sense name exceeds {MAX_NAME_LENGTH} characters ({len(name)} chars)"
+            f"Concern name exceeds {MAX_NAME_LENGTH} characters ({len(name)} chars)"
         )
 
     if name != name.lower():
-        errors.append(f"Sense name '{name}' must be lowercase")
+        errors.append(f"Concern name '{name}' must be lowercase")
 
     if name.startswith(("-", "_")) or name.endswith(("-", "_")):
-        errors.append("Sense name cannot start or end with hyphen or underscore")
+        errors.append("Concern name cannot start or end with hyphen or underscore")
 
     if "--" in name or "__" in name:
         errors.append(
-            "Sense name cannot contain repeated hyphen or underscore separators"
+            "Concern name cannot contain repeated hyphen or underscore separators"
         )
 
     allowed = set("abcdefghijklmnopqrstuvwxyz0123456789-_")
     if not all(c in allowed for c in name):
         errors.append(
-            f"Sense name '{name}' may only contain lowercase letters, digits, hyphens, and underscores"
+            f"Concern name '{name}' may only contain lowercase letters, digits, hyphens, and underscores"
         )
 
     return errors
@@ -290,18 +290,18 @@ def validate_metadata(
 def _is_sense_package_dir(d: Path) -> bool:
     if find_sense_md(d) is not None:
         return True
-    return (d / "sense.yaml").is_file() and (d / "prompt.md").is_file()
+    return (d / "concern.yaml").is_file() and (d / "prompt.md").is_file()
 
 
 def validate(sense_dir: Path) -> list[str]:
-    """Validate one sense package directory. Empty list means valid."""
+    """Validate one concern package directory. Empty list means valid."""
     sense_dir = Path(sense_dir)
     if not sense_dir.exists():
         return [f"Path does not exist: {sense_dir}"]
     if not sense_dir.is_dir():
         return [f"Not a directory: {sense_dir}"]
     if not _is_sense_package_dir(sense_dir):
-        return ["Not a sense package: need SENSE.md (or sense.yaml + prompt.md)"]
+        return ["Not a concern package: need CONCERN.md (or concern.yaml + prompt.md)"]
 
     try:
         if find_sense_md(sense_dir):
@@ -320,7 +320,7 @@ def validate(sense_dir: Path) -> list[str]:
 
 
 def validate_tree(senses_root: Path) -> dict[str, list[str]]:
-    """Validate each immediate child directory under a senses root (e.g. examples/senses)."""
+    """Validate each immediate child directory under a concerns root (e.g. examples/concerns)."""
     root = Path(senses_root)
     if not root.is_dir():
         return {"": [f"Not a directory: {root}"]}

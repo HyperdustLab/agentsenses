@@ -11,6 +11,12 @@ A **sense package** is a single directory that contains one of:
 | **Preferred** | `SENSE.md` (YAML frontmatter + Markdown body) | Use for new senses |
 | **Legacy** | `sense.yaml` + `prompt.md` | Still supported |
 
+Optional package assets:
+
+- `scripts/` for executable advice handlers (default AOP-style behavior).
+- `references/` for non-executable reference material.
+- `assets/` for templates and supporting files.
+
 The directory name is for humans only. The canonical identifier is `name` in the metadata. For **strict validation** (see `senses-ref` below), `name` must follow the grammar in [Allowed `name` grammar](#allowed-name-grammar); matching the parent directory name is recommended but not required by the OpenClaw plugin.
 
 At runtime, the plugin loads **only immediate subdirectories** of the workspace `senses/` folder (or the path returned by `resolvePath("senses")`). Each subdirectory that contains a valid sense file set becomes one loaded sense.
@@ -30,7 +36,8 @@ These paths are **not** required for OpenClaw; they are a suggested convention s
 
 The file MUST start with YAML frontmatter delimited by `---`, then a Markdown body after the closing `---`.
 
-The Markdown body is the **advice**: natural-language policy intended for the **LLM**, not imperative Sense Client code.
+The Markdown body is the **advice** narrative for the **LLM**.
+In Agent Senses (AOP-style), advice is treated as **executable by default** when matching handlers exist in package `scripts/`.
 
 ### Frontmatter fields
 
@@ -46,6 +53,7 @@ Only the keys below are in the **authored surface** for tooling (`senses-ref`). 
 | `pointcut` | No | Mapping with only `all_of`, `any_of`, and/or `not`, each a list of **strings** (see below). |
 | `jointpoints` | No | List of strings (documentational for authors). |
 | `modulation` | No | Mapping with optional `type`: `inhibitory` / `excitatory` / `gating` / `mixed`. |
+| `executable` | No | Optional explicit hook→script mapping override under `scripts/`. |
 | `license` | No | License string or SPDX id (tooling). |
 | `metadata` | No | String-to-string map for client-specific labels. |
 | `compatibility` | No | Free-text environment hints (optional; parity with Agent Skills frontmatter). |
@@ -122,6 +130,41 @@ Examples (exact set depends on context the Sense Client passes into the plugin):
 ### Composition
 
 `all_of`, `any_of`, and `not` **may be mixed** with jointpoint, skill, task, and natural-language atoms in one sense.
+
+## Executable advice (default)
+
+Agent Senses follow AOP semantics: advice is executable by default.
+
+OpenClaw resolves executable handlers in this order:
+
+1. Explicit frontmatter mapping in `executable.<hook>.script`
+2. Convention filenames in `scripts/`:
+   - `scripts/before_model_resolve.js`
+   - `scripts/before_prompt_build.js`
+   - `scripts/before_agent_start.js`
+   - `scripts/before_tool_call.js`
+   - `scripts/message_sending.js`
+   - kebab-case variants are also accepted (for example `scripts/before-model-resolve.js`)
+
+Script modules should export one of:
+
+- a hook-named function (for example `before_model_resolve`)
+- `run(input)` (recommended)
+- default function export
+
+`before_model_resolve` additionally accepts legacy camelCase export alias:
+
+- `beforeModelResolve`
+
+`input` includes:
+
+- `hook`
+- `jointpoint`
+- `event`
+- `pointcut`
+- `sense` metadata
+
+Handler return fields are hook-specific and map directly to plugin behavior (for example `providerOverride`, `modelOverride`, prompt mutation fields, tool call controls, outbound message rewrites).
 
 ## Logical join point ↔ OpenClaw hooks
 
